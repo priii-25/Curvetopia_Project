@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import cv2
 import svgwrite
 import cairosvg
+import csv
 
 def read_csv(csv_path):
     np_path_XYs = np.genfromtxt(csv_path, delimiter=',')
@@ -30,8 +31,7 @@ def detect_shape(XY):
     contour = np.array(XY, dtype=np.int32).reshape((-1, 1, 2))
     peri = cv2.arcLength(contour, True)
     approx = cv2.approxPolyDP(contour, 0.04 * peri, True)
-
-    if cv2.contourArea(contour) < 100:  
+    if cv2.contourArea(contour) < 100:
         return " "
 
     if len(approx) == 3:
@@ -41,9 +41,8 @@ def detect_shape(XY):
         ar = w / float(h)
         if 0.95 <= ar <= 1.05:
             return "Square"
-        elif 0.75 <= ar <= 1.5:  
+        elif 0.75 <= ar <= 1.5:
             return "Rectangle"
-
     elif len(approx) > 5:
         # Check if it's a star
         if is_star(approx):
@@ -67,7 +66,6 @@ def detect_shape(XY):
 
 def is_star(approx):
     num_vertices = len(approx)
-    
     if num_vertices > 8:
         angles = []
         for i in range(num_vertices):
@@ -80,7 +78,7 @@ def is_star(approx):
         sharp_angles = [angle for angle in angles if angle < 60 or angle > 300]
         if len(sharp_angles) >= 5:
             return True
-    
+
     return False
 
 def kasa_circle_fitting(XY):
@@ -102,17 +100,16 @@ def regularize_circle(XY):
     return np.vstack((x_fit, y_fit)).T
 
 def fit_ellipse_direct_method(XY):
-
     X = XY[:, 0]
     Y = XY[:, 1]
     D = np.vstack((X**2, X*Y, Y**2, X, Y, np.ones_like(X))).T
 
     S = np.dot(D.T, D)
     _, V = np.linalg.eig(S)
-    
+
     min_index = np.argmin(_)
     ellipse_params = V[:, min_index]
-    
+
     a, b, c, d, e, f = ellipse_params
     return a, b, c, d, e, f
 
@@ -121,61 +118,95 @@ def get_ellipse_params_from_general_form(a, b, c, d, e, f):
     eigenvalues, eigenvectors = np.linalg.eig(M)
     major_axis = np.sqrt(2 / np.min(eigenvalues))
     minor_axis = np.sqrt(2 / np.max(eigenvalues))
-
     center_x = (d * e - 2 * f * c) / (4 * a * c - b**2)
     center_y = (d * b - 2 * a * e) / (4 * a * c - b**2)
 
     rotation_angle = 0.5 * np.arctan2(b, a - c)
-    
+
     return center_x, center_y, major_axis, minor_axis, rotation_angle
 
 def regularize_ellipse(XY):
     a, b, c, d, e, f = fit_ellipse_direct_method(XY)
     center_x, center_y, major_axis, minor_axis, rotation_angle = get_ellipse_params_from_general_form(a, b, c, d, e, f)
-    
+    # Adjust the center to match the original coordinate range
+    center_x = np.clip(center_x, np.min(XY[:, 0]), np.max(XY[:, 0]))
+    center_y = np.clip(center_y, np.min(XY[:, 1]), np.max(XY[:, 1]))
+
+    # Adjust the major and minor axes to fit within the original coordinate range
+    max_x = np.max(XY[:, 0]) - np.min(XY[:, 0])
+    max_y = np.max(XY[:, 1]) - np.min(XY[:, 1])
+    major_axis = min(major_axis, 0.8 * min(max_x, max_y))
+    minor_axis = min(minor_axis, 0.8 * min(max_x, max_y))
+
     t = np.linspace(0, 2 * np.pi, 100)
     x_fit = center_x + major_axis * np.cos(t) * np.cos(rotation_angle) - minor_axis * np.sin(t) * np.sin(rotation_angle)
     y_fit = center_y + major_axis * np.cos(t) * np.sin(rotation_angle) + minor_axis * np.sin(t) * np.cos(rotation_angle)
-    
+
     return np.vstack((x_fit, y_fit)).T
 
-def hough_rectangle_square_detection(XY):
-    img = np.zeros((int(np.max(XY[:, 1])) + 1, int(np.max(XY[:, 0])) + 1), dtype=np.uint8)
-    for point in XY:
-        img[int(point[1]), int(point[0])] = 255
-
-    edges = cv2.Canny(img, 50, 150, apertureSize=3)
-    lines = cv2.HoughLines(edges, 1, np.pi/180, 200)
-
-    if lines is None:
-        return None, XY
-
-    points = []
-    for rho, theta in lines[:, 0]:
-        a = np.cos(theta)
-        b = np.sin(theta)
-        x0 = a * rho
-        y0 = b * rho
-        x1 = int(x0 + 1000 * (-b))
-        y1 = int(y0 + 1000 * (a))
-        x2 = int(x0 - 1000 * (-b))
-        y2 = int(y0 - 1000 * (a))
-        points.append([x1, y1])
-        points.append([x2, y2])
-
-    points = np.array(points)
-    if len(points) >= 4:
-        rect = cv2.minAreaRect(points)
-        box = cv2.boxPoints(rect)
-        box = np.int0(box)
-        return "Rectangle", box
-    return None, XY
-
 def regularize_rectangle(XY):
-    return XY
+    XY = np.array(XY, dtype=np.float32)
+    rect = cv2.minAreaRect(XY)
+    box = cv2.boxPoints(rect)  
+    box = np.int0(box)  
+
+    center = np.mean(box, axis=0)
+
+    width = np.linalg.norm(box[0] - box[1])
+    height = np.linalg.norm(box[1] - box[2])
+
+    if width < height:
+        width, height = height, width
+
+    regularized_XY = np.array([
+        [center[0] - width / 2, center[1] - height / 2],
+        [center[0] + width / 2, center[1] - height / 2],
+        [center[0] + width / 2, center[1] + height / 2],
+        [center[0] - width / 2, center[1] + height / 2]
+    ])
+
+    return regularized_XY
 
 def regularize_square(XY):
-    return XY
+    X = XY[:, 0]
+    Y = XY[:, 1]
+    A = np.vstack([X, np.ones(len(X))]).T
+    m, c = np.linalg.lstsq(A, Y, rcond=None)[0]
+    reg_XY = np.column_stack((X, m * X + c))
+    width = np.max(X) - np.min(X)
+    height = np.max(Y) - np.min(Y)
+    side_length = min(width, height)
+
+    x_min = np.min(X)
+    y_min = np.min(Y)
+    reg_XY = np.array([
+        [x_min, y_min],
+        [x_min + side_length, y_min],
+        [x_min + side_length, y_min + side_length],
+        [x_min, y_min + side_length]
+    ])
+
+    return reg_XY
+
+def regularize_star(XY):
+    centroid = np.mean(XY, axis=0)
+    angles = np.arctan2(XY[:, 1] - centroid[1], XY[:, 0] - centroid[0])
+    distances = np.linalg.norm(XY - centroid, axis=1)
+    median_distance = np.median(distances)
+
+    outer_points = XY[distances > median_distance]
+    inner_points = XY[distances <= median_distance]
+
+    outer_points_sorted = outer_points[np.argsort(angles[distances > median_distance])]
+    inner_points_sorted = inner_points[np.argsort(angles[distances <= median_distance])]
+
+    regularized_XY = []
+    for i in range(len(outer_points_sorted)):
+        regularized_XY.append(outer_points_sorted[i])
+        if i < len(inner_points_sorted):
+            regularized_XY.append(inner_points_sorted[i])
+
+    return np.array(regularized_XY)
 
 def detect_and_regularize_shape(XY):
     shape = detect_shape(XY)
@@ -183,12 +214,12 @@ def detect_and_regularize_shape(XY):
         regularized_XY = regularize_circle(XY)
     elif shape == "Ellipse":
         regularized_XY = regularize_ellipse(XY)
-    elif shape in ["Rectangle", "Square"]:
-        shape, regularized_XY = hough_rectangle_square_detection(XY)
-        if shape == "Rectangle":
-            regularized_XY = regularize_rectangle(regularized_XY)
-        elif shape == "Square":
-            regularized_XY = regularize_square(regularized_XY)
+    elif shape == "Rectangle":
+        regularized_XY = regularize_rectangle(XY)
+    elif shape == "Square":
+        regularized_XY = regularize_square(XY)
+    elif shape == "Star":
+        regularized_XY = regularize_star(XY)
     else:
         regularized_XY = XY
     return shape, regularized_XY
@@ -196,18 +227,23 @@ def detect_and_regularize_shape(XY):
 def plot_shapes_with_labels(path_XYs, regularized_XYs):
     fig, ax = plt.subplots(1, 2, tight_layout=True, figsize=(16, 8))
     colours = ['r', 'g', 'b', 'c', 'm', 'y', 'k']
-
     for i, (orig_XYs, reg_XYs) in enumerate(zip(path_XYs, regularized_XYs)):
         c = colours[i % len(colours)]
-        for XY, reg_XY in zip(orig_XYs, reg_XYs):
+        for j, (XY, reg_XY) in enumerate(zip(orig_XYs, reg_XYs)):
             shape, reg_XY = detect_and_regularize_shape(XY)
-            # Plot the original polyline
+            
+            centroid_orig = np.mean(XY, axis=0)
+            centroid_reg = np.mean(reg_XY, axis=0)
+            translation_vector = centroid_orig - centroid_reg
+            reg_XY += translation_vector
+            
             ax[0].plot(XY[:, 0], XY[:, 1], c=c, linewidth=2)
-            # Plot the regularized shape
+            cx, cy = np.mean(XY, axis=0)
+            ax[0].text(cx, cy, f"Original {shape} {j+1}", fontsize=12, ha='center', color='black')
+            
             ax[1].plot(reg_XY[:, 0], reg_XY[:, 1], c=c, linewidth=2)
-            # Add labels
             cx, cy = np.mean(reg_XY, axis=0)
-            ax[1].text(cx, cy, shape, fontsize=12, ha='center', color='black')
+            ax[1].text(cx, cy, f"Regularized {shape} {j+1}", fontsize=12, ha='center', color='black')
 
     ax[0].set_title('Original Shapes')
     ax[1].set_title('Regularized Shapes')
@@ -227,7 +263,6 @@ def polylines2csv(paths_XYs, csv_path):
 def main():
     input_csv = "Test_cases/isolated.csv"
     output_csv = "Test_cases/regularized_shapes.csv"
-
     path_XYs = read_csv(input_csv)
     regularized_XYs = []
 
