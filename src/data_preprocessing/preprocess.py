@@ -65,3 +65,5 @@ def polylines2svg(paths_XYs, svg_path, colours=['red', 'green', 'blue', 'cyan', 
     png_path = svg_path.replace('.svg', '.png')
     fact = max(1, 1024 // min(H, W))
     cairosvg.svg2png(url=svg_path, write_to=png_path, parent_width=W, parent_height=H, output_width=fact * W, output_height=fact * H, background_color='white')
+path_XYs = read_csv('src\curve_completion\occlusion1_sol.csv')
+plot(path_XYs)
