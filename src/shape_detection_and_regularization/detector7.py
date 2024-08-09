@@ -1,8 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
-import svgwrite
-import cairosvg
 import csv
 
 def read_csv(csv_path):
@@ -261,7 +259,7 @@ def polylines2csv(paths_XYs, csv_path):
                     writer.writerow([i] + point.tolist())
 
 def main():
-    input_csv = "Test_cases/isolated.csv"
+    input_csv = "src\curve_completion\occlusion2.csv"
     output_csv = "Test_cases/regularized_shapes.csv"
     path_XYs = read_csv(input_csv)
     regularized_XYs = []
