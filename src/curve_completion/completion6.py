@@ -30,7 +30,6 @@ def complete_half_shape(curve):
     degree = 3
     knot_vector = np.linspace(0, 1, len(control_points) + degree + 1)
 
-    # Interpolate the curve
     interpolated_curve = b_spline_interpolation(control_points, knot_vector, degree)
     
     return interpolated_curve
