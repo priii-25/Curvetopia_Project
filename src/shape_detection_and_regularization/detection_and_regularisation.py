@@ -275,8 +275,8 @@ def polylines2csv(paths_XYs, csv_path):
                     writer.writerow([i] + point.tolist())
 
 def main():
-    input_csv = "Test_cases/isolated.csv"
-    output_csv = "Test_cases/regularized_shapes.csv"
+    input_csv = "src/curve_completion/completed_curves.csv"  # Use the output from the first program
+    output_csv = "src/curve_completion/regularized_shapes.csv"
     path_XYs = read_csv(input_csv)
     regularized_XYs = []
 
@@ -289,6 +289,10 @@ def main():
 
     plot_shapes_with_labels(path_XYs, regularized_XYs)
     polylines2csv(regularized_XYs, output_csv)
+
+if __name__ == "__main__":
+    main()
+
 
 if __name__ == "__main__":
     main()
