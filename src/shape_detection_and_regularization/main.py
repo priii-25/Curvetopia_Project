@@ -289,15 +289,10 @@ def draw_symmetry_lines(ax, shape, reg_XY, color):
     center = np.mean(reg_XY, axis=0)
     
     if shape == "Ellipse":
-        # Find the bounding box
         x_min, y_min = np.min(reg_XY, axis=0)
         x_max, y_max = np.max(reg_XY, axis=0)
         center_x, center_y = (x_min + x_max) / 2, (y_min + y_max) / 2
-        
-        # Draw major axis
         ax.plot([x_min, x_max], [center_y, center_y], color=color, linestyle='--', linewidth=1)
-        
-        # Draw minor axis
         ax.plot([center_x, center_x], [y_min, y_max], color=color, linestyle='--', linewidth=1)
         
         print("Ellipse has 2 lines of symmetry.")
@@ -306,20 +301,17 @@ def draw_symmetry_lines(ax, shape, reg_XY, color):
         x_min, y_min = np.min(reg_XY, axis=0)
         x_max, y_max = np.max(reg_XY, axis=0)
         
-        # Vertical symmetry line
         plot_line(ax, ((x_min + x_max)/2, y_min), ((x_min + x_max)/2, y_max), color)
         
-        # Horizontal symmetry line
         plot_line(ax, (x_min, (y_min + y_max)/2), (x_max, (y_min + y_max)/2), color)
         
         print("Rectangle has 2 lines of symmetry.")
 
     elif shape == "Star":
         center = np.mean(reg_XY, axis=0)
-        num_points = len(reg_XY) // 2  # Assuming the star has an even number of points
+        num_points = len(reg_XY) // 2  
         
         for i in range(num_points):
-            # Connect opposite points through the center
             start_point = reg_XY[i]
             end_point = reg_XY[(i + num_points) % len(reg_XY)]
             
