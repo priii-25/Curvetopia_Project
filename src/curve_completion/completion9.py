@@ -4,11 +4,17 @@ import matplotlib.pyplot as plt
 from shapely.geometry import LineString, Point
 import cv2
 
-def load_data(csv_file):
-    data = pd.read_csv(csv_file, header=None)
-    x_coords = data[2].values
-    y_coords = data[3].values
-    return np.vstack((x_coords, y_coords)).T
+def read_csv(csv_path):
+    np_path_XYs = np.genfromtxt(csv_path, delimiter=',')
+    path_XYs = []
+    for i in np.unique(np_path_XYs[:, 0]):
+        npXYs = np_path_XYs[np_path_XYs[:, 0] == i][:, 1:]
+        XYs = []
+        for j in np.unique(npXYs[:, 0]):
+            XY = npXYs[npXYs[:, 0] == j][:, 1:]
+            XYs.append(XY)
+        path_XYs.append(XYs)
+    return path_XYs
 
 def detect_intersections(curve):
     curve_line = LineString(curve)
@@ -41,18 +47,11 @@ def complete_interrupted_curve(curve, interrupted_segment):
     extended_curve = np.vstack(extended_curve)
     return np.vstack((curve[:end_idx+1], extended_curve))
 
-def fit_and_draw_ellipse(curve_points):
-    curve_points = curve_points.astype(np.float32)  
-    
-    if len(curve_points) >= 5: 
-        ellipse = cv2.fitEllipse(curve_points)
-        
-        # Draw ellipse
-        ellipse_points = ellipse_to_points(ellipse)
-        return ellipse_points, ellipse
-    else:
-        print("Not enough points to fit an ellipse.")
-        return curve_points, None
+def fit_ellipse_through_segment(segment):
+    if len(segment) >= 5:
+        ellipse = cv2.fitEllipse(segment.astype(np.float32))
+        return ellipse
+    return None
 
 def ellipse_to_points(ellipse, num_points=100):
     center, axes, angle = ellipse
@@ -66,34 +65,58 @@ def ellipse_to_points(ellipse, num_points=100):
     points = np.vstack((X, Y)).T
     return points
 
-def main():
-    csv_file = 'src/curve_completion/occlusion1.csv'  
-    curve = load_data(csv_file)
+def plot(original_curves, fitted_ellipses, title=""):
+    fig, ax = plt.subplots(tight_layout=True, figsize=(8, 8))
     
-    intersections, interrupted_segments = detect_intersections(curve)
+    # Plot original curves
+    for curve in original_curves:
+        ax.plot(curve[:, 0], curve[:, 1], 'bo-', linewidth=2, markersize=2, label='Original Curve')
     
-    if intersections:
-        print("Occlusion detected. Completing the curve...")
-        completed_curve = curve.copy()
-        
-        for interrupted_segment in interrupted_segments:
-            completed_curve = complete_interrupted_curve(completed_curve, interrupted_segment)
-            break  
-        
-    else:
-        completed_curve = curve
+    # Plot fitted ellipses
+    for ellipse in fitted_ellipses:
+        ax.plot(ellipse[:, 0], ellipse[:, 1], 'r-', linewidth=2, label='Fitted Ellipse')
     
-    # Fit the completed curve to an ellipse
-    ellipse_points, fitted_ellipse = fit_and_draw_ellipse(completed_curve)
-    
-    plt.plot(curve[:, 0], curve[:, 1], 'bo-', label='Original Curve')
-    plt.plot(ellipse_points[:, 0], ellipse_points[:, 1], 'r-', label='Fitted Ellipse')
+    ax.set_aspect('equal')
+    plt.title(title)
     plt.legend()
-    plt.xlabel('X')
-    plt.ylabel('Y')
-    plt.title('Occlusion Detection and Ellipse Regularization')
-    plt.gca().set_aspect('equal', adjustable='box')
     plt.show()
+
+def main():
+    csv_file = 'src/curve_completion/occlusion1.csv'
+    path_XYs = read_csv(csv_file)
+    
+    all_original_curves = []
+    all_fitted_ellipses = []
+    
+    for XYs in path_XYs:
+        for curve in XYs:
+            all_original_curves.append(curve)
+            intersections, interrupted_segments = detect_intersections(curve)
+            
+            if intersections:
+                print("Occlusion detected. Completing the curve...")
+                completed_curve = curve.copy()
+                
+                for interrupted_segment in interrupted_segments:
+                    completed_curve = complete_interrupted_curve(completed_curve, interrupted_segment)
+                
+                ellipses = []
+                for interrupted_segment in interrupted_segments:
+                    segment = completed_curve[interrupted_segment[0]:interrupted_segment[1]+1]
+                    ellipse = fit_ellipse_through_segment(segment)
+                    
+                    if ellipse is not None:
+                        ellipse_points = ellipse_to_points(ellipse)
+                        ellipses.append(ellipse_points)
+                
+                all_fitted_ellipses.extend(ellipses)
+            else:
+                ellipse = fit_ellipse_through_segment(curve)
+                if ellipse is not None:
+                    all_fitted_ellipses.append(ellipse_to_points(ellipse))
+    
+    plot(all_original_curves, all_fitted_ellipses, title="Occlusion Detection and Ellipse Regularization")
+
 
 if __name__ == "__main__":
     main()
