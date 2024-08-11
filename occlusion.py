@@ -288,7 +288,6 @@ def main():
     plt.gca().set_aspect('equal', adjustable='box')
     plt.show()
     
-    # Save the output as SVG and CSV
     output_svg = 'output_combined.svg'
     output_csv = 'output_combined.csv'
     
