@@ -36,7 +36,6 @@ def detect_shape(XY):
     if area < 100:
         return " "
 
-    # Check for straight line first
     if is_straight_line(XY):
         return "Straight Line"
 
@@ -47,7 +46,6 @@ def detect_shape(XY):
             return "Rectangle"
 
     elif len(approx) > 5:
-        # Check for star
         if is_star(approx):
             return "Star"
         
@@ -85,9 +83,7 @@ def is_square(contour, tolerance=0.05):
 
 def detect_closed_shape(XY):
     """Check if the points form a closed loop"""
-    # Convert the points to a contour
     contour = np.array(XY, dtype=np.int32).reshape((-1, 1, 2))
-    # Check if the contour forms a closed shape by comparing the first and last point
     return np.array_equal(contour[0], contour[-1])
 
 def is_star(approx):
@@ -152,14 +148,11 @@ def get_ellipse_params_from_general_form(a, b, c, d, e, f):
     return center_x, center_y, major_axis, minor_axis, rotation_angle
 
 def regularize_ellipse(XY):
-    # Get the exact dimensions from the original shape
     x_min, y_min = np.min(XY, axis=0)
     x_max, y_max = np.max(XY, axis=0)
     center = [(x_min + x_max) / 2, (y_min + y_max) / 2]
     width = x_max - x_min
     height = y_max - y_min
-    
-    # Generate points for the ellipse using the exact dimensions
     t = np.linspace(0, 2 * np.pi, 200)
     x = center[0] + width/2 * np.cos(t)
     y = center[1] + height/2 * np.sin(t)
@@ -167,49 +160,42 @@ def regularize_ellipse(XY):
     return np.column_stack((x, y))
 
 def regularize_rectangle(XY):
-    # Get the exact dimensions from the original shape
     x_min, y_min = np.min(XY, axis=0)
     x_max, y_max = np.max(XY, axis=0)
-    
-    # Create regularized rectangle using original dimensions and position
+
     regularized = np.array([
         [x_min, y_min],
         [x_max, y_min],
         [x_max, y_max],
         [x_min, y_max],
-        [x_min, y_min]  # Close the rectangle
+        [x_min, y_min]  
     ])
     
     return regularized
 
 def regularize_square(XY):
-    # Get the minimal bounding rectangle first
     x_min, y_min = np.min(XY, axis=0)
     x_max, y_max = np.max(XY, axis=0)
-    
-    # Calculate the side length of the square (smallest bounding box side)
+
     side_length = min(x_max - x_min, y_max - y_min)
-    
-    # Recalculate the coordinates of the regularized square
+
     reg_XY = np.array([
         [x_min, y_min],
         [x_min + side_length, y_min],
         [x_min + side_length, y_min + side_length],
         [x_min, y_min + side_length],
-        [x_min, y_min]  # Close the square
+        [x_min, y_min]  
     ])
     
     return reg_XY
 
 def regularize_star(XY, num_points=5):
     centroid = np.mean(XY, axis=0)
-    
-    # Calculate radii
+
     radii = np.linalg.norm(XY - centroid, axis=1)
     outer_radius = np.max(radii)
     inner_radius = np.min(radii)
     
-    # Generate points for the star
     angles = np.linspace(0, 2*np.pi, 2*num_points, endpoint=False)
     
     star_points = []
@@ -219,58 +205,19 @@ def regularize_star(XY, num_points=5):
         y = centroid[1] + r * np.sin(angle)
         star_points.append([x, y])
     
-    star_points.append(star_points[0])  # Close the shape
+    star_points.append(star_points[0])  
     
     return np.array(star_points)
-
-def smooth_xy(XY, window_length=5, poly_order=2):
-    XY_smooth = savgol_filter(XY, window_length, poly_order, axis=0)
-    return XY_smooth
-
-def ramer_douglas_peucker(points, epsilon):
-    dmax = 0
-    index = 0
-    for i in range(1, len(points) - 1):
-        d = np.abs(np.cross(points[-1] - points[0], points[i] - points[0])) / np.linalg.norm(points[-1] - points[0])
-        if d > dmax:
-            index = i
-            dmax = d
-    if dmax > epsilon:
-        results = ramer_douglas_peucker(points[:index+1], epsilon)[:-1] + ramer_douglas_peucker(points[index:], epsilon)
-    else:
-        results = [points[0], points[-1]]
-    return results
-
-def merge_collinear_segments(segments, angle_threshold=5):
-    merged = []
-    current_segment = segments[0]
-    for next_segment in segments[1:]:
-        v1 = current_segment[1] - current_segment[0]
-        v2 = next_segment[1] - next_segment[0]
-        angle = np.abs(np.degrees(np.arctan2(np.cross(v1, v2), np.dot(v1, v2))))
-        if angle < angle_threshold:
-            current_segment = np.array([current_segment[0], next_segment[1]])
-        else:
-            merged.append(current_segment)
-            current_segment = next_segment
-    merged.append(current_segment)
-    return merged
 
 def is_straight_line(XY, tolerance=0.05):
     if len(XY) < 3:
         return True
     
-    # Calculate the total length of the polyline
     total_length = np.sum(np.sqrt(np.sum(np.diff(XY, axis=0)**2, axis=1)))
-    
-    # Calculate the distance between start and end points
     start_to_end = np.linalg.norm(XY[-1] - XY[0])
-    
-    # If the ratio is close to 1, it's likely a straight line
     return (total_length - start_to_end) / total_length < tolerance
 
 def regularize_straight_line(XY):
-    # Simply return the start and end points
     return np.array([XY[0], XY[-1]])
 
 def detect_closed_shape(path_XYs, tolerance=10):
@@ -283,20 +230,17 @@ def detect_closed_shape(path_XYs, tolerance=10):
     return np.linalg.norm(end - start) < tolerance
 
 def regularize_closed_shape(path_XYs):
-    # Combine all segments
     combined = np.vstack(path_XYs)
     
-    # Find the bounding box
     x_min, y_min = np.min(combined, axis=0)
     x_max, y_max = np.max(combined, axis=0)
-    
-    # Create regularized rectangle
+
     return np.array([
         [x_min, y_min],
         [x_max, y_min],
         [x_max, y_max],
         [x_min, y_max],
-        [x_min, y_min]  # Close the shape
+        [x_min, y_min]  
     ])
 
 def detect_and_regularize_shape(XY):
